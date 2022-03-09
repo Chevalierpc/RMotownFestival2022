@@ -1,8 +1,12 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Threading.Tasks;
 
+using Microsoft.ApplicationInsights;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 using RMotownFestival.Api.Data;
 using RMotownFestival.Api.Domain;
@@ -13,34 +17,76 @@ namespace RMotownFestival.Api.Controllers
     [ApiController]
     public class FestivalController : ControllerBase
     {
+        public MotownDbContext _ctx { get; }
+        public TelemetryClient telemetryClient { get; }
+
+        public FestivalController(MotownDbContext motownDbContext, TelemetryClient _telemetryClient)
+        {
+            _ctx = motownDbContext;
+            telemetryClient = _telemetryClient;
+        }
+
         [HttpGet("LineUp")]
         [ProducesResponseType((int)HttpStatusCode.OK, Type = typeof(Schedule))]
-        public ActionResult GetLineUp()
+        //public ActionResult GetLineUp()
+            public async Task<ActionResult> GetLineUp()
         {
-            return Ok(FestivalDataSource.Current.LineUp);
+            throw new ApplicationException("LineUp failed");
+            var schedule = await _ctx.Schedules.Include(x => x.Festival)
+                .Include(x => x.Items)
+                .ThenInclude(x => x.Artist)
+                .Include(x => x.Items)
+                .ThenInclude(x => x.Stage)
+                .FirstOrDefaultAsync();
+            return Ok(schedule);
         }
 
         [HttpGet("Artists")]
         [ProducesResponseType((int)HttpStatusCode.OK, Type = typeof(IEnumerable<Artist>))]
-        public ActionResult GetArtists()
+        //public ActionResult GetArtists()
+        //{
+        //    return Ok(FestivalDataSource.Current.Artists);
+        //}
+        public async  Task<ActionResult> GetArtists(bool? withRating)
         {
-            return Ok(FestivalDataSource.Current.Artists);
+
+            if (withRating.HasValue && withRating.Value)
+            {
+                telemetryClient.TrackEvent($"List of artists with rating");
+            }
+                
+            else
+            {
+                telemetryClient.TrackEvent($"List of artists without rating");
+            }
+                
+
+            var artist = await _ctx.Artists.ToListAsync();
+            return Ok(artist);
         }
 
         [HttpGet("Stages")]
         [ProducesResponseType((int)HttpStatusCode.OK, Type = typeof(IEnumerable<Stage>))]
-        public ActionResult GetStages()
+        //public ActionResult GetStages()
+        //{
+        //    return Ok(FestivalDataSource.Current.Stages);
+        //}
+        public async Task<ActionResult> GetStages()
         {
-            return Ok(FestivalDataSource.Current.Stages);
+            var stage = await _ctx.Stages.ToListAsync();
+            return Ok(stage);
         }
 
         [HttpPost("Favorite")]
         [ProducesResponseType((int)HttpStatusCode.OK, Type = typeof(ScheduleItem))]
         [ProducesResponseType((int)HttpStatusCode.NotFound)]
-        public ActionResult SetAsFavorite(int id)
+        public async Task<ActionResult> SetAsFavoriteAsync(int id)
         {
-            var schedule = FestivalDataSource.Current.LineUp.Items
-                .FirstOrDefault(si => si.Id == id);
+            //var schedule = FestivalDataSource.Current.LineUp.Items
+            //    .FirstOrDefault(si => si.Id == id);
+
+            var schedule = await _ctx.ScheduleItems.Where(si => si.Id == id).FirstOrDefaultAsync();
+
             if (schedule != null)
             {
                 schedule.IsFavorite = !schedule.IsFavorite;
